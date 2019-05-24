@@ -10,17 +10,22 @@ import (
 	"strconv"
 )
 
-var rooturl = "https://www.stringmeteo.com/synop/temp_month.php"
+var url_temps = "https://www.stringmeteo.com/synop/temp_month.php"
+var url_prec = "https://www.stringmeteo.com/synop/prec_month.php"
+var mode = "prec"
 
-func get_page_url(year int, month int) string {
-	return fmt.Sprintf("%v?year=%v&month=%v", rooturl, year, month)
+func get_temp_page_url(year int, month int) string {
+	return fmt.Sprintf("%v?year=%v&month=%v", url_temps, year, month)
+}
 
+func get_prec_page_url(year int, month int) string {
+	return fmt.Sprintf("%v?year=%v&month=%v", url_prec, year, month)
 }
 
 type StationTemp struct {
-	Name string  `csv:"name"`
-	Date string  `csv:"date"`
-	Temp float64 `csv:"temp"`
+	Name    string  `csv:"name"`
+	Date    string  `csv:"date"`
+	Reading float64 `csv:"reading"`
 }
 
 func get_page_data(year int, month int) []StationTemp {
@@ -38,26 +43,44 @@ func get_page_data(year int, month int) []StationTemp {
 		stationName := stationNames.First().First().Text()
 		var stationRecords []StationTemp
 		day := 1
-		s.Find(".small2").Each(func(i int, x *goquery.Selection) {
+		//Get the temps
+		s.Find("span").Each(func(i int, x *goquery.Selection) {
 			txt := x.Text()
-			temp, _ := strconv.ParseFloat(txt, 32)
+			temp, err := strconv.ParseFloat(txt, 32)
+			if err != nil {
+				return
+			}
+			if day > 31 {
+				return
+			}
 			stationRecords = append(stationRecords, StationTemp{
-				Name: stationName,
-				Temp: temp,
-				Date: fmt.Sprintf("%v-%v-%v", year, month, day),
+				Name:    stationName,
+				Reading: temp,
+				Date:    fmt.Sprintf("%v-%v-%v", year, month, day),
 			})
 			day += 1
 		})
 		allTemps = append(allTemps, stationRecords...)
 		log.Println(fmt.Sprintf("Processed %v %v %v", stationName, year, month))
 	})
+	if mode == "temp" {
+		c.Visit(get_temp_page_url(year, month))
+	} else if mode == "prec" {
+		c.Visit(get_prec_page_url(year, month))
+	}
 
-	c.Visit(get_page_url(year, month))
 	return allTemps
 }
 
 func main() {
-	output_file, err := os.OpenFile("temps.csv", os.O_RDWR|os.O_CREATE, os.ModePerm)
+	output_fname := ""
+	if mode == "temp" {
+		output_fname = "temps.csv"
+	} else if mode == "prec" {
+		output_fname = "prec.csv"
+	}
+
+	output_file, err := os.OpenFile(output_fname, os.O_RDWR|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		log.Println(err)
 		return
